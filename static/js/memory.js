@@ -21,9 +21,9 @@ const MEMORY_CATEGORIES = ['fact', 'identity', 'preference', 'contact', 'project
 let _memoryDragWired = false;
 function _wireMemoryDrag() {
   if (_memoryDragWired) return;
+  const content = modal.querySelector('.modal-content');
   const modal = document.getElementById('memory-modal');
-  const content = modal && modal.querySelector('.modal-content');
-  const header = modal && modal.querySelector('.modal-header');
+  const header = content.querySelector('.modal-header');
   if (!modal || !content || !header) return;
   _memoryDragWired = true;
   makeWindowDraggable(modal, {
