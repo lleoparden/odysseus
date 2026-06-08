@@ -73,7 +73,7 @@ function runCase(body) {
   const events = body.events ?? [body.event ?? {}];
   let lastPrevented = false;
   for (const ev of events) {
-    if (ev._send) { composer.dispatchSend(); lastPrevented = false; }
+    if (ev._send) { composer.value = ''; composer.dispatchSend(); lastPrevented = false; }
     else lastPrevented = composer.dispatchKey(ev);
   }
 

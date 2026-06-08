@@ -3,7 +3,10 @@
  * - ArrowUp on an empty composer recalls the most recent user prompt.
  * - Repeated ArrowUp walks further back through prior user prompts.
  * - ArrowDown walks forward again toward the empty/newest composer state.
- * - Non-empty composer is never hijacked.
+ * - Non-empty composer is never hijacked (unless already in history traversal
+ *   AND the value hasn't been edited since the last history navigation).
+ * - If the user edits a recalled message, the traversal resets so ArrowUp/Down
+ *   starts fresh from that edited content as a new draft.
  * - Scoped to #chat-history (active session only).
  */
 
@@ -20,6 +23,7 @@ export function getUserMessagesFromChatHistory(root = document) {
       ? root
       : (root.getElementById ? root.getElementById('chat-history') : null);
   if (!chatBox) return [];
+
   const users = chatBox.querySelectorAll('.msg-user');
   return Array.from(users).map((el) => {
     const bodyEl = el.querySelector('.body');
@@ -55,13 +59,22 @@ export function wireArrowUpRecall(composer, getUserMessages, options = {}) {
   // 0  = most recent message, 1 = one before that, etc.
   let historyIndex = -1;
   let savedDraft = '';
+  // The value we last set via history navigation — used to detect user edits.
+  let lastHistoryValue = null;
 
   function setValue(val) {
     composer.value = val;
+    lastHistoryValue = val;
     try {
       composer.selectionStart = composer.selectionEnd = val.length;
     } catch (_) {}
     if (autoResize) autoResize(composer);
+  }
+
+  function isEditedSinceLastNav() {
+    // If we're in history mode but the composer content no longer matches what
+    // we set, the user has edited the recalled text → treat as new draft.
+    return historyIndex !== -1 && composer.value !== lastHistoryValue;
   }
 
   composer.addEventListener('keydown', (e) => {
@@ -73,6 +86,13 @@ export function wireArrowUpRecall(composer, getUserMessages, options = {}) {
     const total = messages.length;
 
     if (e.key === 'ArrowUp') {
+      // If the user edited a recalled message, reset to treat it as a fresh draft.
+      if (isEditedSinceLastNav()) {
+        savedDraft = composer.value;
+        historyIndex = -1;
+        lastHistoryValue = null;
+      }
+
       // Never hijack a non-empty composer unless already in history
       if (historyIndex === -1 && composer.value !== '') return;
 
@@ -95,10 +115,19 @@ export function wireArrowUpRecall(composer, getUserMessages, options = {}) {
     if (e.key === 'ArrowDown') {
       if (historyIndex === -1) return; // not in history, nothing to do
 
+      // If the user edited a recalled message, reset — ArrowDown exits cleanly.
+      if (isEditedSinceLastNav()) {
+        savedDraft = composer.value;
+        historyIndex = -1;
+        lastHistoryValue = null;
+        return; // don't preventDefault; let the cursor move naturally
+      }
+
       e.preventDefault();
       historyIndex--;
 
       if (historyIndex === -1) {
+        lastHistoryValue = null;
         setValue(savedDraft);
       } else {
         setValue(messages[total - 1 - historyIndex]);
@@ -111,6 +140,7 @@ export function wireArrowUpRecall(composer, getUserMessages, options = {}) {
   composer.addEventListener('send', () => {
     historyIndex = -1;
     savedDraft = '';
+    lastHistoryValue = null;
   });
 
   return true;
