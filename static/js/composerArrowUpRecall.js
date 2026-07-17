@@ -82,6 +82,9 @@ export function wireArrowUpRecall(composer, getUserMessages, options = {}) {
     if (e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return;
     if (e.isComposing) return;
 
+    // Add this early return BEFORE getUserMessages()
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+
     const messages = getUserMessages(); // oldest→newest
     const total = messages.length;
 
