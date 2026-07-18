@@ -82,11 +82,7 @@ export function wireArrowUpRecall(composer, getUserMessages, options = {}) {
     if (e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return;
     if (e.isComposing) return;
 
-    // Add this early return BEFORE getUserMessages()
     if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
-
-    const messages = getUserMessages(); // oldest→newest
-    const total = messages.length;
 
     if (e.key === 'ArrowUp') {
       // If the user edited a recalled message, reset to treat it as a fresh draft.
@@ -99,6 +95,8 @@ export function wireArrowUpRecall(composer, getUserMessages, options = {}) {
       // Never hijack a non-empty composer unless already in history
       if (historyIndex === -1 && composer.value !== '') return;
 
+      const messages = getUserMessages(); // oldest→newest
+      const total = messages.length;
       if (total === 0) return;
 
       if (historyIndex === -1) {
@@ -125,6 +123,9 @@ export function wireArrowUpRecall(composer, getUserMessages, options = {}) {
         lastHistoryValue = null;
         return; // don't preventDefault; let the cursor move naturally
       }
+
+      const messages = getUserMessages(); // oldest→newest
+      const total = messages.length;
 
       e.preventDefault();
       historyIndex--;

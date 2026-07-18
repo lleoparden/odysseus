@@ -283,6 +283,128 @@ def test_send_resets_history_index():
 
 
 # ---------------------------------------------------------------------------
+# P2 regression: session beyond page limit without scrolling first
+# ---------------------------------------------------------------------------
+
+@pytest.mark.skipif(not _HAS_NODE, reason="node binary not on PATH")
+def test_arrow_up_reaches_all_messages_beyond_page_limit():
+    """Regression: with 50 user messages (exceeding any rendered page),
+    ArrowUp should walk through ALL of them, not clamp at a page boundary."""
+    msgs = [f"msg-{i}" for i in range(50)]
+    # Walk through all 50 messages from newest to oldest
+    events = [{} for _ in range(50)]
+    out = _run([{
+        "initial": "",
+        "messages": msgs,
+        "events": events,
+    }])[0]
+    assert out["value"] == "msg-0", f"Expected oldest message 'msg-0', got {out['value']!r}"
+
+
+@pytest.mark.skipif(not _HAS_NODE, reason="node binary not on PATH")
+def test_arrow_up_page_limit_then_arrow_down():
+    """After exhausting a page-length traversal, ArrowDown should walk
+    forward through all messages back to the draft."""
+    msgs = [f"msg-{i}" for i in range(50)]
+    # Up 50 times (to oldest), then down 25 times (back to 25th newest)
+    events = [{} for _ in range(50)] + [{"key": "ArrowDown"} for _ in range(25)]
+    out = _run([{
+        "initial": "",
+        "messages": msgs,
+        "events": events,
+    }])[0]
+    assert out["value"] == "msg-25", f"Expected 'msg-25', got {out['value']!r}"
+
+
+@pytest.mark.skipif(not _HAS_NODE, reason="node binary not on PATH")
+def test_arrow_up_page_limit_does_not_clamp_at_boundary():
+    """The oldest message does NOT clamp traversal — ArrowUp past the
+    oldest should stay on the oldest message (no wrap-around)."""
+    msgs = [f"msg-{i}" for i in range(50)]
+    # 55 ArrowUps on a 50-message history — should stop at oldest
+    events = [{} for _ in range(55)]
+    out = _run([{
+        "initial": "",
+        "messages": msgs,
+        "events": events,
+    }])[0]
+    assert out["value"] == "msg-0", f"Expected oldest 'msg-0', got {out['value']!r}"
+
+
+# ---------------------------------------------------------------------------
+# P3 regression: no-op arrow paths must NOT scan chat history
+# ---------------------------------------------------------------------------
+
+@pytest.mark.skipif(not _HAS_NODE, reason="node binary not on PATH")
+def test_no_op_arrow_up_non_empty_does_not_call_provider():
+    """ArrowUp on a non-empty live composer must NOT call getUserMessages."""
+    called = []
+    js = f"""
+    import {{ wireArrowUpRecall }} from '{_HELPER_URL}';
+    const listeners = [];
+    const composer = {{
+      value: 'draft',
+      selectionStart: 5, selectionEnd: 5,
+      _arrowUpRecallWired: false,
+      addEventListener(type, fn) {{ if (type === 'keydown') listeners.push(fn); }},
+    }};
+    let providerCalled = false;
+    wireArrowUpRecall(composer, () => {{ providerCalled = true; return ['msg']; }});
+    let prevented = false;
+    listeners[0]({{
+      key: 'ArrowUp', shiftKey: false, altKey: false, ctrlKey: false, metaKey: false,
+      isComposing: false,
+      preventDefault() {{ prevented = true; }},
+    }});
+    console.log(JSON.stringify({{ providerCalled, prevented, value: composer.value }}));
+    """
+    proc = subprocess.run(
+        ["node", "--input-type=module"],
+        input=js, capture_output=True, text=True, encoding="utf-8",
+        cwd=str(_REPO), timeout=30,
+    )
+    assert proc.returncode == 0, proc.stderr
+    result = json.loads(proc.stdout.strip())
+    assert result["providerCalled"] is False, "getUserMessages was called for non-empty ArrowUp"
+    assert result["prevented"] is False
+    assert result["value"] == "draft"
+
+
+@pytest.mark.skipif(not _HAS_NODE, reason="node binary not on PATH")
+def test_no_op_arrow_down_outside_history_does_not_call_provider():
+    """ArrowDown outside history traversal must NOT call getUserMessages."""
+    js = f"""
+    import {{ wireArrowUpRecall }} from '{_HELPER_URL}';
+    const listeners = [];
+    const composer = {{
+      value: '',
+      selectionStart: 0, selectionEnd: 0,
+      _arrowUpRecallWired: false,
+      addEventListener(type, fn) {{ if (type === 'keydown') listeners.push(fn); }},
+    }};
+    let providerCalled = false;
+    wireArrowUpRecall(composer, () => {{ providerCalled = true; return ['msg']; }});
+    let prevented = false;
+    listeners[0]({{
+      key: 'ArrowDown', shiftKey: false, altKey: false, ctrlKey: false, metaKey: false,
+      isComposing: false,
+      preventDefault() {{ prevented = true; }},
+    }});
+    console.log(JSON.stringify({{ providerCalled, prevented, value: composer.value }}));
+    """
+    proc = subprocess.run(
+        ["node", "--input-type=module"],
+        input=js, capture_output=True, text=True, encoding="utf-8",
+        cwd=str(_REPO), timeout=30,
+    )
+    assert proc.returncode == 0, proc.stderr
+    result = json.loads(proc.stdout.strip())
+    assert result["providerCalled"] is False, "getUserMessages was called for no-op ArrowDown"
+    assert result["prevented"] is False
+    assert result["value"] == ""
+
+
+# ---------------------------------------------------------------------------
 # DOM helper tests (preserved + extended)
 # ---------------------------------------------------------------------------
 

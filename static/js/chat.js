@@ -191,8 +191,13 @@ import { wireArrowUpRecall,getUserMessagesFromChatHistory } from './composerArro
     }).catch(() => {});
 
     // ArrowUp on empty composer recalls last user message (like many chat apps).
+    // Prefer the cached session history (full prompt list) over the rendered DOM
+    // so traversal covers the entire session even when not all pages are mounted.
     const _wireArrowUpRecall = (composer) =>
-      wireArrowUpRecall(composer, () => getUserMessagesFromChatHistory(document), {
+      wireArrowUpRecall(composer, () => {
+        const cached = sessionModule.getCachedUserMessages();
+        return cached.length ? cached : getUserMessagesFromChatHistory(document);
+      }, {
         autoResize: uiModule?.autoResize,
       });
 
@@ -630,6 +635,11 @@ import { wireArrowUpRecall,getUserMessagesFromChatHistory } from './composerArro
       let _userMsgEl = null;
       if (!skipBubble) {
         _userMsgEl = addMessage('user', userDisplay, null, _pendingAttachInfo ? { attachments: _pendingAttachInfo } : null);
+        // Append live user message to cached history so ArrowUp recall covers it
+        if (_userMsgEl) {
+          const raw = _userMsgEl.dataset?.raw;
+          if (raw) sessionModule.getCachedUserMessages().push(raw);
+        }
       }
       messageInput.value = '';
       messageInput.style.height = '';

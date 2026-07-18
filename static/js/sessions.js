@@ -20,6 +20,7 @@ let _skipAutoSelect = false;
 const SIDEBAR_MAX_VISIBLE = 10;
 const FOLDER_MAX_VISIBLE = 5;
 let _showAllSessions = false;
+let _cachedUserMessages = []; // full user-message prompt history for current session
 let _expandedFolders = {};  // folderName -> true if "show more" clicked
 let _sortMode = Storage.get('odysseus-session-sort') || 'active'; // default to last active
 let _autoCreateInProgress = false; // guard against recursive auto-create
@@ -1607,6 +1608,12 @@ export async function selectSession(id, { keepSidebar = false } = {}) {
           updateModelPicker();
         }
       }
+
+      // Cache user messages for ArrowUp recall so traversal covers the full
+      // session history regardless of what's currently rendered in the DOM.
+      _cacheUserMessages(msgHistory);
+    } else {
+      _cachedUserMessages = [];
     }
 
     // Guard: if the fetched history is empty but the DOM already has message
@@ -1886,6 +1893,41 @@ export function getCurrentSessionId() {
 
 export function getSessions() {
   return sessions;
+}
+
+/** Cache user prompt messages from a raw API history array. Filters out
+ *  control / system messages the same way the renderer does so the cache
+ *  matches what a user would expect from ArrowUp recall. */
+function _cacheUserMessages(history) {
+  _cachedUserMessages = [];
+  if (!history || !history.length) return;
+  for (const msg of history) {
+    if (msg.role !== 'user') continue;
+    let text;
+    if (typeof msg.content === 'string') {
+      text = msg.content;
+    } else if (Array.isArray(msg.content)) {
+      text = msg.content.filter(p => p.type === 'text').map(p => p.text).join('\n').trim();
+    } else {
+      continue;
+    }
+    // Skip control messages (same filter as the renderer uses)
+    const trimmed = text.trim();
+    if (trimmed === 'Continue where you left off' ||
+        trimmed.startsWith('Your message was cut off.') ||
+        trimmed.startsWith('Your previous response was interrupted.') ||
+        trimmed.includes('[Instruction: Rewrite') ||
+        trimmed.includes('[Instruction: Explain')) continue;
+    _cachedUserMessages.push(text);
+  }
+}
+
+/** Return the cached user-message prompt history (oldest→newest) for the
+ *  current session, or empty array if not yet loaded. Falls back to empty
+ *  so callers can complement with DOM-based reads when the cache is clear
+ *  (e.g. incognito sessions that don't persist history). */
+export function getCachedUserMessages() {
+  return _cachedUserMessages;
 }
 
 export function getCurrentModel() {
@@ -3108,6 +3150,7 @@ const sessionModule = {
   getPendingChat,
   getCurrentSessionId,
   getSessions,
+  getCachedUserMessages,
   getCurrentModel,
   getCurrentEndpointUrl,
   setCurrentSessionId,
